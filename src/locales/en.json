@@ -1,0 +1,24 @@
+{
+  "ticket": {
+    "filter": {
+      "transfer": {
+        "title": "Number of transfers",
+        "amount": "Without transfers | One trasfer | {count} transfers"
+      },
+      "company": {
+        "title": "Company",
+        "all": "All"
+      }
+    },
+
+    "sort": {
+      "cheapest": "Cheapest",
+      "fastest": "Fastest",
+      "optimal": "Optimal"
+    },
+
+    "list": {
+      "more": "Show 5 more tickets!"
+    }
+  }
+}
