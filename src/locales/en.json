@@ -1,9 +1,9 @@
 {
-  "ticket": {
+  "flight": {
     "filter": {
       "transfer": {
         "title": "Number of transfers",
-        "amount": "Without transfers | One trasfer | {count} transfers"
+        "amount": "Without transfers | One transfer | {count} transfers"
       },
       "company": {
         "title": "Company",
@@ -17,8 +17,11 @@
       "optimal": "Optimal"
     },
 
-    "list": {
-      "more": "Show 5 more tickets!"
+    "ticket": {
+      "more": "Show {n} more tickets!",
+      "segment": {
+        "travelTime": "Travel time"
+      }
     }
   }
 }

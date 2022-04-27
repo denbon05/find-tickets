@@ -5,18 +5,18 @@
         <v-col class="d-flex justify-center">
           <img
             width="60"
-            :src="require('./assets/logo.png')"
+            :src="require('@/assets/logo.png')"
             alt="Plain logo"
           />
         </v-col>
       </v-row>
-      <v-row>
+      <v-row justify="center">
         <!-- Filters -->
-        <v-col cols="12" md="4" lg="3">
+        <v-col cols="12" md="4" lg="3" xl="2">
           <aside class="d-flex flex-row flex-md-column" style="gap: 20px">
             <v-card elevation="2" class="pa-3 flex-grow-1"
               ><v-card-title class="text-subtitle-1">{{
-                $t("ticket.filter.transfer.title").toUpperCase()
+                $t("flight.filter.transfer.title").toUpperCase()
               }}</v-card-title>
               <v-checkbox
                 hide-details
@@ -32,29 +32,27 @@
             <v-card
               elevation="2"
               class="pa-3 flex-grow-1"
-              v-if="companies.length"
+              v-if="companies.size"
             >
               <v-card-title class="text-subtitle-1">{{
-                $t("ticket.filter.company.title").toUpperCase()
+                $t("flight.filter.company.title").toUpperCase()
               }}</v-card-title>
               <v-checkbox
                 hide-details
                 color="info"
                 :key="`company_filter_${companyIdx}`"
-                v-for="(company, companyIdx) in companies"
-                :label="company.name"
-                :value="company.name"
+                v-for="([, { name }], companyIdx) in [...companies].reverse()"
+                :label="name"
+                :value="name"
                 v-model="selectedCompanies"
-                @change="selectCompany"
               ></v-checkbox>
             </v-card>
           </aside>
         </v-col>
         <!-- List of flights -->
-        <v-col cols="12" md="8">
+        <v-col cols="12" md="8" lg="6" xl="4">
           <v-btn-toggle
-            v-model="sortBy"
-            @update:model-value="changeSortBy"
+            v-model="sortItemIdx"
             mandatory="0"
             divided
             selected-class="bg-info"
@@ -66,20 +64,53 @@
               v-for="(sortByOption, sortByIdx) in sortByList"
               class="flex-grow-1"
             >
-              <span>{{ $t(`ticket.sort.${sortByOption}`) }}</span>
+              <span>{{ $t(`flight.sort.${sortByOption}`) }}</span>
             </v-btn>
           </v-btn-toggle>
           <v-main class="d-flex flex-column">
-            <template v-if="formatedTickets.length">
+            <template v-if="formattedTickets.length">
               <v-card
                 :key="`ticket_${ticketIdx}`"
-                v-for="(ticket, ticketIdx) in formatedTickets"
+                v-for="(ticket, ticketIdx) in formattedTickets"
                 elevation="2"
                 class="pa-3 my-4 flex-grow-1"
-                >{{ ticket.price }}</v-card
               >
+                <section class="d-flex justify-space-between my-3">
+                  <v-card-subtitle class="text-h6 text-info"
+                    >{{ ticket.price }} {{ currentCurrency }}
+                  </v-card-subtitle>
+                  <div>
+                    <v-img
+                      :src="require(`@/assets/${ticket.logoName}`)"
+                      height="36px"
+                      width="110px"
+                      cover
+                    ></v-img>
+                  </div>
+                </section>
+                <section class="d-flex flex-row justify-space-between px-4">
+                  <div>
+                    <span class="text-subtitle-2 text-grey"
+                      >{{ departurePoint }} – {{ arrivalPoint }}</span
+                    >
+                    <div></div>
+                  </div>
+                  <div>
+                    <span class="text-subtitle-2 text-grey">{{
+                      $t("flight.ticket.segment.travelTime").toUpperCase()
+                    }}</span>
+                    <div></div>
+                  </div>
+                  <div>
+                    <span class="text-subtitle-2 text-grey">{{
+                      $tc("flight.filter.transfer.amount").toUpperCase()
+                    }}</span>
+                    <div></div>
+                  </div>
+                </section>
+              </v-card>
               <v-btn @click="showMoreTickets" class="w-100" color="info">{{
-                $t("ticket.list.more")
+                $t("flight.ticket.more", { n: ticketsStep })
               }}</v-btn>
             </template>
           </v-main>
@@ -90,77 +121,57 @@
 </template>
 
 <script>
-import { first, isEqual } from "lodash";
-import { fetchCompaniesList, fetchTicketsList } from "@/api";
+import { isEqual, sortBy, difference } from "lodash";
+import { loadContextData } from "@/api";
 
 export default {
   name: "App",
 
   data: () => ({
+    // query
+    contextQuery: {
+      isLoading: true,
+      isSuccess: true,
+      message: "",
+    },
     // filters
     labels: [],
     amounts: { 0: false, 1: false, 2: false, 3: false },
-    companies: [],
+    allCompaniesOption: null,
+    companies: new Map(),
     selectedCompanies: [],
     // sort
-    sortBy: 0,
+    sortItemIdx: null,
     sortByList: ["cheapest", "fastest", "optimal"],
     // tickets
     tickets: [],
     ticketsStep: 5,
     beginTicketsIdx: 0,
     endTicketsIdx: 5,
+    // flight
+    currentCurrency: "UAH",
+    departurePoint: "MOW",
+    arrivalPoint: "HKT",
   }),
 
   methods: {
-    async fetchCompaniesList() {
+    async loadContext() {
+      this.contextQuery.isLoading = true;
       try {
-        const { data } = await fetchCompaniesList();
-        this.companies = [
-          { name: this.$t("ticket.filter.company.all") },
-          ...data,
-        ];
+        const { companies, tickets } = await loadContextData();
+        companies.set(null, this.allCompaniesOption);
+        this.companies = companies;
+        this.tickets = tickets;
+        this.sortItemIdx = 0;
+        this.contextQuery = { isLoading: false, isSuccess: true };
       } catch (err) {
         console.error(err);
+        this.contextQuery = {
+          isLoading: false,
+          isSuccess: false,
+          message: err.message,
+        };
       }
-    },
-
-    async fetchTicketsList() {
-      try {
-        const { data } = await fetchTicketsList();
-        this.tickets = data;
-      } catch (err) {
-        console.error(err);
-      }
-    },
-
-    selectCompany({ target: { value } }) {
-      const companyNames = this.companies.map(({ name }) => name);
-      const selectedAllValue = first(this.companies).name;
-      const selectedCompanies = this.selectedCompanies.filter(
-        (selectedValue) => selectedValue !== selectedAllValue
-      );
-      const restCompanies = companyNames.slice(1);
-      const shouldBeSelectedAllCompanies =
-        (value === selectedAllValue &&
-          this.selectedCompanies.includes(value)) ||
-        isEqual(selectedCompanies, restCompanies);
-      const shouldAllCompaniesBeUnselected =
-        value === selectedAllValue && !this.selectedCompanies.includes(value);
-
-      if (shouldAllCompaniesBeUnselected) {
-        this.selectedCompanies = [];
-      } else if (shouldBeSelectedAllCompanies) {
-        this.selectedCompanies = companyNames;
-      } else if (!isEqual(selectedCompanies, restCompanies)) {
-        this.selectedCompanies = this.selectedCompanies.filter(
-          (selectedValue) => selectedValue !== selectedAllValue
-        );
-      }
-    },
-
-    changeSortBy(e) {
-      console.log(e);
     },
 
     showMoreTickets() {
@@ -169,17 +180,86 @@ export default {
   },
 
   computed: {
-    formatedTickets() {
-      return this.tickets.slice(this.beginTicketsIdx, this.endTicketsIdx);
+    formattedTickets: {
+      get() {
+        const visibleTickets = this.tickets.slice(
+          this.beginTicketsIdx,
+          this.endTicketsIdx
+        );
+        const visibleTicketsWithLogo = visibleTickets.map((ticket) => ({
+          ...ticket,
+          logoName: this.companies.get(ticket.companyId).logo,
+        }));
+        return visibleTicketsWithLogo;
+      },
+      set(items) {
+        this.tickets = items;
+      },
+    },
+  },
+
+  watch: {
+    sortItemIdx(idx) {
+      const sortByKey = this.sortByList[idx];
+      switch (sortByKey) {
+        case "cheapest":
+          this.formattedTickets = sortBy(this.tickets, (t) => t.price);
+          break;
+        default:
+          throw Error(`Unhandled sort option "${sortByKey}"`);
+      }
+    },
+
+    selectedCompanies: {
+      handler(newValues, oldValues) {
+        if (isEqual(newValues, oldValues)) {
+          return;
+        }
+        const companyNames = [...this.companies].map(([, { name }]) => name);
+        const selectedAllKey = this.allCompaniesOption.name;
+        const selectedCompanies = newValues.filter(
+          (key) => key !== selectedAllKey
+        );
+        const restCompanies = companyNames.filter(
+          (name) => name !== selectedAllKey
+        );
+        // debugger;
+        const [newValue] = difference(newValues, oldValues);
+        const [oldValue] = difference(oldValues, newValues);
+
+        const areAllCompaniesSelected = isEqual(
+          sortBy(selectedCompanies),
+          sortBy(restCompanies)
+        );
+        const shouldAllCompaniesBeSelected =
+          (newValue === selectedAllKey && newValues.includes(selectedAllKey)) ||
+          (areAllCompaniesSelected && oldValue !== selectedAllKey);
+        const shouldAllCompaniesBeUnselected =
+          (!areAllCompaniesSelected || oldValue === selectedAllKey) &&
+          newValue !== selectedAllKey;
+
+        if (shouldAllCompaniesBeSelected) {
+          this.selectedCompanies = companyNames;
+        } else if (!areAllCompaniesSelected) {
+          this.selectedCompanies = newValues.filter(
+            (selectedValue) => selectedValue !== selectedAllKey
+          );
+        } else if (shouldAllCompaniesBeUnselected) {
+          this.selectedCompanies = [];
+        }
+      },
+      deep: true,
     },
   },
 
   created() {
-    this.labels = [0, 1, 2, 3].map((n) =>
-      this.$tc("ticket.filter.transfer.amount", n, { count: n })
+    this.allCompaniesOption = {
+      name: this.$t("flight.filter.company.all"),
+    };
+    this.labels = [0, 1, 2, 3].map((count) =>
+      this.$tc("flight.filter.transfer.amount", count)
     );
-    this.fetchCompaniesList();
-    this.fetchTicketsList();
+    this.loadContext();
   },
 };
 </script>

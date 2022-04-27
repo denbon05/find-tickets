@@ -1,12 +1,23 @@
 import axios from "axios";
 
-const mainFilterDataUrl =
+const contextMainDataUrl =
   "https://raw.githubusercontent.com/denbon05/data/main/";
-const companiesDataUrl = new URL("companies.json", mainFilterDataUrl);
-const ticketsDataUrl = new URL("tickets.json", mainFilterDataUrl);
+const contextDataUrl = new URL("yourcodereview.json", contextMainDataUrl);
 
-export const fetchCompaniesList = async () =>
-  await axios.get(companiesDataUrl.toString());
+const companies = new Map();
+const segments = new Map();
 
-export const fetchTicketsList = async () =>
-  await axios.get(ticketsDataUrl.toString());
+export const loadContextData = async () => {
+  const {
+    data: { tickets, companies: companiesList, segments: segmentsList },
+  } = await axios.get(contextDataUrl.toString());
+
+  companiesList.forEach((company) => {
+    companies.set(company.id, company);
+  });
+  segmentsList.forEach((segment) => {
+    segments.set(segment.id, segment);
+  });
+
+  return { companies, tickets, segments };
+};
