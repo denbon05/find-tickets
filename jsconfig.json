@@ -8,6 +8,9 @@
     "paths": {
       "@/*": [
         "src/*"
+      ],
+      "~/*": [
+        "public/*"
       ]
     },
     "lib": [
@@ -16,5 +19,12 @@
       "dom.iterable",
       "scripthost"
     ]
-  }
+  },
+  "include": [
+    "./src/**/*",
+    "./public/**/*"
+  ],
+  "exclude": [
+    "node_modules"
+  ]
 }

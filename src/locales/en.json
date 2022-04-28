@@ -19,6 +19,7 @@
 
     "ticket": {
       "more": "Show {n} more tickets!",
+      "emptyList": "No tickets",
       "segment": {
         "travelTime": "Travel time"
       }
