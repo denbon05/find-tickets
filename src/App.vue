@@ -1,5 +1,12 @@
 <template>
   <v-app style="background-color: #e9eff5">
+    <v-snackbar
+      :color="snackbar.color"
+      v-model="snackbar.isVisible"
+      :timeout="snackbar.timeout"
+    >
+      {{ snackbar.message }}
+    </v-snackbar>
     <v-container>
       <v-row class="my-2">
         <v-col class="d-flex justify-center">
@@ -184,6 +191,12 @@ export default {
       isSuccess: true,
       message: "",
     },
+    snackbar: {
+      isVisible: false,
+      message: "",
+      timeout: 3000,
+      color: "error",
+    },
     // filters
     labels: [],
     transferAmounts: { 0: true, 1: false, 2: false, 3: false },
@@ -209,6 +222,15 @@ export default {
   }),
 
   methods: {
+    toggleSnackbar({ message = "", isVisible = true, isSuccess = false }) {
+      this.snackbar = {
+        ...this.snackbar,
+        isVisible,
+        message,
+        color: isSuccess ? "success" : "error",
+      };
+    },
+
     async loadContext() {
       this.contextQuery.isLoading = true;
       try {
@@ -220,7 +242,7 @@ export default {
         this.selectedCompanyIds = [this.allCompaniesOption.id];
         this.contextQuery = { isLoading: false, isSuccess: true };
       } catch (err) {
-        console.error(err);
+        this.toggleSnackbar({ message: err });
         this.contextQuery = {
           isLoading: false,
           isSuccess: false,
@@ -231,6 +253,19 @@ export default {
 
     showMoreTickets() {
       this.endTicketsIdx += this.ticketsStep;
+    },
+
+    sortByPrice() {
+      return sortBy(this.filteredTickets, ({ price }) => price);
+    },
+
+    sortByTime() {
+      return sortBy(this.filteredTickets, ({ segments }) => {
+        const durations = segments.map(
+          (segmentId) => this.filteredSegments.get(segmentId).duration
+        );
+        return sum(durations);
+      });
     },
   },
 
@@ -297,10 +332,8 @@ export default {
       });
 
       if (this.filterCompanyIds.has(this.allCompaniesId)) {
-        // console.log("ALL");
         return tickets;
       }
-      // console.log("Specific", { fcIDS: this.filterCompanyIds });
       return tickets.filter(({ companyId }) =>
         this.filterCompanyIds.has(companyId)
       );
@@ -311,16 +344,14 @@ export default {
 
       switch (sortKey) {
         case "cheapest":
-          return sortBy(this.filteredTickets, ({ price }) => price);
+          return this.sortByPrice();
         case "fastest":
-          return sortBy(this.filteredTickets, ({ segments }) => {
-            const durations = segments.map(
-              (segmentId) => this.filteredSegments.get(segmentId).duration
-            );
-            return sum(durations);
-          });
-        // case "optimal":
-        //   break;
+          return this.sortByTime();
+        case "optimal":
+          return sortBy(this.filteredTickets, [
+            this.sortByPrice(),
+            this.sortByTime(),
+          ]);
         default:
           throw Error(`Unhandled sort option "${sortKey}"`);
       }
@@ -337,15 +368,13 @@ export default {
               const { duration } = segment;
               const datesKeys = ["dateStart", "dateEnd"];
               const beginEndDate = datesKeys
-                .map((d) => {
-                  return moment(segment[d]).format("HH:MM");
-                })
+                .map((d) => moment(segment[d]).format("HH:mm"))
                 .join(" - ");
               return omit(
                 {
                   ...{
                     ...segment,
-                    duration: moment.utc(duration).format("HH:MM"),
+                    duration: moment.utc(duration).format("HH:mm"),
                   },
                   beginEndDate,
                 },
@@ -358,10 +387,6 @@ export default {
   },
 
   watch: {
-    sortItemIdx() {
-      console.log(this.sortedTickets);
-    },
-
     selectedCompanyIds: {
       handler(newIds, oldIds) {
         if (isEqual(newIds, oldIds)) {
@@ -395,6 +420,16 @@ export default {
         this.filterCompanyIds = new Set(this.selectedCompanyIds);
       },
       deep: true,
+    },
+
+    contextQuery: {
+      handler({ isLoading, message, isSuccess }) {
+        if (!isLoading && message && !isSuccess) {
+          this.toggleSnackbar({ message, isSuccess });
+        }
+      },
+      deep: true,
+      immediately: false,
     },
   },
 
