@@ -1,4 +1,5 @@
 import axios from "axios";
+import moment from "moment";
 
 const contextMainDataUrl =
   "https://raw.githubusercontent.com/denbon05/data/main/";
@@ -12,12 +13,22 @@ export const loadContextData = async () => {
     data: { tickets, companies: companiesList, segments: segmentsList },
   } = await axios.get(contextDataUrl.toString());
 
-  companiesList.forEach((company) => {
-    companies.set(company.id, company);
-  });
   segmentsList.forEach((segment) => {
     segments.set(segment.id, segment);
   });
+
+  companiesList.forEach((company) => {
+    companies.set(company.id, company);
+  });
+
+  segmentsList.forEach((segment) => {
+    const { dateStart, dateEnd, duration } = segment;
+    segment.dateStart = moment(dateStart).format("HH:MM");
+    segment.dateEnd = moment(dateEnd).format("HH:MM");
+    segment.duration = moment(duration).format("HH:MM");
+    segments.set(segment);
+  });
+  console.log([...segments].at(0));
 
   return { companies, tickets, segments };
 };
