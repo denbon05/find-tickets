@@ -97,11 +97,13 @@
                       beginEndDate,
                       duration,
                       stops,
+                      origin,
+                      destination,
                     } in ticketSegments[ticketIdx]"
                   >
                     <v-col class="d-flex flex-column">
                       <span class="text-subtitle-2 text-grey">
-                        {{ departurePoint }} – {{ arrivalPoint }}
+                        {{ origin }} – {{ destination }}
                       </span>
                       <span class="font-weight-medium">{{ beginEndDate }}</span>
                     </v-col>
@@ -125,9 +127,17 @@
                   </v-row>
                 </v-container>
               </v-card>
-              <v-btn @click="showMoreTickets" class="w-100" color="info">{{
-                $t("flight.ticket.more", { n: ticketsStep })
-              }}</v-btn>
+              <v-btn
+                :disabled="areAllTicketsVisible"
+                @click="showMoreTickets"
+                class="w-100"
+                color="info"
+                >{{
+                  $t("flight.ticket.more", {
+                    n: !areAllTicketsVisible ? ticketsStep : 0,
+                  })
+                }}</v-btn
+              >
             </v-main>
           </template>
           <template v-else>
@@ -144,7 +154,7 @@
 </template>
 
 <script>
-import { isEqual, sortBy, difference, camelCase, omit } from "lodash";
+import { isEqual, sortBy, difference, camelCase, omit, isEmpty } from "lodash";
 import { loadContextData } from "@/api";
 import publicImg from "~/img";
 import img from "@/assets/img";
@@ -182,7 +192,7 @@ export default {
     beginTicketsIdx: 0,
     endTicketsIdx: 5,
     // segments
-    segments: new Map(),
+    segments: [],
     // flight
     currentCurrency: "UAH",
     departurePoint: "MOW",
@@ -217,6 +227,10 @@ export default {
   },
 
   computed: {
+    areAllTicketsVisible() {
+      return this.formattedTickets.length === this.tickets;
+    },
+
     formattedTickets() {
       const visibleTickets = this.filteredTickets.slice(
         this.beginTicketsIdx,
@@ -234,27 +248,52 @@ export default {
       return visibleTicketsWithLogo;
     },
 
+    filteredSegments() {
+      const { departurePoint, arrivalPoint } = this;
+      const segmentsFilteredByPoints = this.segments.filter(
+        ({ origin, destination }) =>
+          departurePoint === origin && arrivalPoint === destination
+      );
+      return segmentsFilteredByPoints.reduce(
+        (map, segment) => map.set(segment.id, segment),
+        new Map()
+      );
+    },
+
     filteredTickets() {
+      const tickets = [];
+      this.tickets.forEach((ticket) => {
+        const suitableSegments = ticket.segments.filter((segmentId) =>
+          this.filteredSegments.has(segmentId)
+        );
+        if (!isEmpty(suitableSegments)) {
+          ticket.segments = suitableSegments;
+          tickets.push(ticket);
+        }
+      });
+
       if (this.filterCompanyIds.has(this.allCompaniesId)) {
         // console.log("ALL");
-        return this.tickets;
+        return tickets;
       }
       // console.log("Specific", { fcIDS: this.filterCompanyIds });
-      return this.tickets.filter(({ companyId }) =>
+      return tickets.filter(({ companyId }) =>
         this.filterCompanyIds.has(companyId)
       );
     },
 
     ticketSegments() {
-      const segments = this.segments;
-      return new Proxy(this.tickets, {
+      const segments = this.filteredSegments;
+      return new Proxy(this.filteredTickets, {
         get(tickets, ticketIdx) {
-          return tickets[ticketIdx].segments.map((segmentId) => {
-            const segment = segments.get(segmentId);
-            const datesKeys = ["startDate", "endDate"];
-            const beginEndDate = `${segment.dateStart} - ${segment.dateEnd}`;
-            return omit({ ...segment, beginEndDate }, datesKeys);
-          });
+          return tickets[ticketIdx].segments
+            .filter((segmentId) => segments.get(segmentId))
+            .map((segmentId) => {
+              const segment = segments.get(segmentId);
+              const datesKeys = ["startDate", "endDate"];
+              const beginEndDate = `${segment.dateStart} - ${segment.dateEnd}`;
+              return omit({ ...segment, beginEndDate }, datesKeys);
+            });
         },
       });
     },
