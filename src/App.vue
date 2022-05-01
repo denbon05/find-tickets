@@ -154,7 +154,16 @@
 </template>
 
 <script>
-import { isEqual, sortBy, difference, camelCase, omit, isEmpty } from "lodash";
+import moment from "moment";
+import {
+  isEqual,
+  sortBy,
+  difference,
+  camelCase,
+  omit,
+  isEmpty,
+  sum,
+} from "lodash";
 import { loadContextData } from "@/api";
 import publicImg from "~/img";
 import img from "@/assets/img";
@@ -184,7 +193,7 @@ export default {
     selectedCompanyIds: [],
     filterCompanyIds: new Set(),
     // sort
-    sortItemIdx: null,
+    sortItemIdx: 0,
     sortByList: ["cheapest", "fastest", "optimal"],
     // tickets
     tickets: [],
@@ -208,7 +217,6 @@ export default {
         this.segments = segments;
         this.companies = companies;
         this.tickets = tickets;
-        this.sortItemIdx = 0;
         this.selectedCompanyIds = [this.allCompaniesOption.id];
         this.contextQuery = { isLoading: false, isSuccess: true };
       } catch (err) {
@@ -242,7 +250,7 @@ export default {
     },
 
     formattedTickets() {
-      const visibleTickets = this.filteredTickets.slice(
+      const visibleTickets = this.sortedTickets.slice(
         this.beginTicketsIdx,
         this.endTicketsIdx
       );
@@ -298,17 +306,51 @@ export default {
       );
     },
 
+    sortedTickets() {
+      const sortKey = this.sortByList[this.sortItemIdx];
+
+      switch (sortKey) {
+        case "cheapest":
+          return sortBy(this.filteredTickets, ({ price }) => price);
+        case "fastest":
+          return sortBy(this.filteredTickets, ({ segments }) => {
+            const durations = segments.map(
+              (segmentId) => this.filteredSegments.get(segmentId).duration
+            );
+            return sum(durations);
+          });
+        // case "optimal":
+        //   break;
+        default:
+          throw Error(`Unhandled sort option "${sortKey}"`);
+      }
+    },
+
     ticketSegments() {
       const segments = this.filteredSegments;
-      return new Proxy(this.filteredTickets, {
+      return new Proxy(this.sortedTickets, {
         get(tickets, ticketIdx) {
           return tickets[ticketIdx].segments
             .filter((segmentId) => segments.get(segmentId))
             .map((segmentId) => {
               const segment = segments.get(segmentId);
-              const datesKeys = ["startDate", "endDate"];
-              const beginEndDate = `${segment.dateStart} - ${segment.dateEnd}`;
-              return omit({ ...segment, beginEndDate }, datesKeys);
+              const { duration } = segment;
+              const datesKeys = ["dateStart", "dateEnd"];
+              const beginEndDate = datesKeys
+                .map((d) => {
+                  return moment(segment[d]).format("HH:MM");
+                })
+                .join(" - ");
+              return omit(
+                {
+                  ...{
+                    ...segment,
+                    duration: moment.utc(duration).format("HH:MM"),
+                  },
+                  beginEndDate,
+                },
+                datesKeys
+              );
             });
         },
       });
@@ -316,15 +358,8 @@ export default {
   },
 
   watch: {
-    sortItemIdx(idx) {
-      const sortKey = this.sortByList[idx];
-      switch (sortKey) {
-        case "cheapest":
-          this.tickets = sortBy(this.tickets, (t) => t.price);
-          break;
-        default:
-          throw Error(`Unhandled sort option "${sortKey}"`);
-      }
+    sortItemIdx() {
+      console.log(this.sortedTickets);
     },
 
     selectedCompanyIds: {
