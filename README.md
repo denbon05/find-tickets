@@ -1,4 +1,6 @@
-# find-tickets
+# <a href="https://find-tickets.vercel.app/" target="_blank">find-tickets</a>
+
+<p>Training pet project for yourcoderview. We want to fly from city MOW to EKT.</p>
 
 ## Project setup
 ```

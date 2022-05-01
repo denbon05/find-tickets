@@ -2,6 +2,7 @@
   "name": "find-tickets",
   "version": "0.1.0",
   "private": true,
+  "description": "Training pet project for yourcoderview. We want to fly from city MOW to EKT.",
   "scripts": {
     "serve": "vue-cli-service serve",
     "build": "vue-cli-service build",

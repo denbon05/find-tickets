@@ -20,9 +20,9 @@
                 :key="`transfer_filter_${transferIdx}`"
                 v-for="(
                   _isSelectedOption, transferAmount, transferIdx
-                ) in amounts"
+                ) in transferAmounts"
                 :label="labels[transferIdx]"
-                v-model="amounts[transferAmount]"
+                v-model="transferAmounts[transferAmount]"
               ></v-checkbox>
             </v-card>
             <v-card
@@ -134,10 +134,10 @@
                 color="info"
                 >{{
                   $t("flight.ticket.more", {
-                    n: !areAllTicketsVisible ? ticketsStep : 0,
+                    n: nextVisibleTicketsAmount,
                   })
-                }}</v-btn
-              >
+                }}
+              </v-btn>
             </v-main>
           </template>
           <template v-else>
@@ -177,7 +177,7 @@ export default {
     },
     // filters
     labels: [],
-    amounts: { 0: false, 1: false, 2: false, 3: false },
+    transferAmounts: { 0: true, 1: false, 2: false, 3: false },
     allCompaniesOption: null,
     allCompaniesId: "ALL",
     companies: new Map(),
@@ -227,8 +227,18 @@ export default {
   },
 
   computed: {
+    nextVisibleTicketsAmount() {
+      const visibleTicketsAmount = this.filteredTickets.length;
+      const invisibleTicketsCount = visibleTicketsAmount - this.endTicketsIdx;
+      if (invisibleTicketsCount <= 0) return 0;
+      if (invisibleTicketsCount >= this.ticketsStep) {
+        return this.ticketsStep;
+      }
+      return invisibleTicketsCount;
+    },
+
     areAllTicketsVisible() {
-      return this.formattedTickets.length === this.tickets;
+      return this.formattedTickets.length === this.filteredTickets.length;
     },
 
     formattedTickets() {
@@ -250,11 +260,17 @@ export default {
 
     filteredSegments() {
       const { departurePoint, arrivalPoint } = this;
-      const segmentsFilteredByPoints = this.segments.filter(
-        ({ origin, destination }) =>
-          departurePoint === origin && arrivalPoint === destination
+      const segmentsFilteredByPointsAndTransfers = this.segments.filter(
+        ({ origin, destination, stops }) => {
+          const isSuitablePoints =
+            departurePoint === origin && arrivalPoint === destination;
+          const transferAmount = stops.length;
+          const isSuitableTransfersAmount =
+            this.transferAmounts[transferAmount];
+          return isSuitablePoints && isSuitableTransfersAmount;
+        }
       );
-      return segmentsFilteredByPoints.reduce(
+      return segmentsFilteredByPointsAndTransfers.reduce(
         (map, segment) => map.set(segment.id, segment),
         new Map()
       );
