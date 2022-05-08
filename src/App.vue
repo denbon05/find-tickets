@@ -1,5 +1,12 @@
 <template>
   <v-app style="background-color: #e9eff5">
+    <v-snackbar
+      :color="snackbar.color"
+      v-model="snackbar.isVisible"
+      :timeout="snackbar.timeout"
+    >
+      {{ snackbar.message }}
+    </v-snackbar>
     <v-container>
       <v-row class="my-2">
         <v-col class="d-flex justify-center">
@@ -20,9 +27,9 @@
                 :key="`transfer_filter_${transferIdx}`"
                 v-for="(
                   _isSelectedOption, transferAmount, transferIdx
-                ) in amounts"
+                ) in transferAmounts"
                 :label="labels[transferIdx]"
-                v-model="amounts[transferAmount]"
+                v-model="transferAmounts[transferAmount]"
               ></v-checkbox>
             </v-card>
             <v-card
@@ -33,23 +40,22 @@
               <v-card-title class="text-subtitle-1">{{
                 $t("flight.filter.company.title").toUpperCase()
               }}</v-card-title>
-              <v-checkbox
-                hide-details
-                color="info"
-                :key="`company_filter_${companyIdx}`"
-                v-for="([, { name, id }], companyIdx) in [
-                  ...companies,
-                ].reverse()"
-                :label="name"
-                :value="id"
-                v-model="selectedCompanyIds"
-              ></v-checkbox>
+              <v-radio-group v-model="selectedCompanyIds">
+                <v-radio
+                  hide-details
+                  color="info"
+                  :key="`company_filter_${id}`"
+                  v-for="[, { name, id }] in [...companies].reverse()"
+                  :label="name"
+                  :value="id"
+                ></v-radio
+              ></v-radio-group>
             </v-card>
           </aside>
         </v-col>
         <!-- Sort buttons -->
         <v-col cols="12" md="8" lg="6" xl="4">
-          <template v-if="formattedTickets.length">
+          <template v-if="formattedTickets.length && !contextQuery.isLoading">
             <v-btn-toggle
               v-model="sortItemIdx"
               mandatory="0"
@@ -69,51 +75,79 @@
             <!-- List of tickets -->
             <v-main class="d-flex flex-column justify-center">
               <v-card
-                :key="`ticket_${ticketIdx}`"
-                v-for="(ticket, ticketIdx) in formattedTickets"
+                :key="`ticket_${ticketId}`"
+                v-for="(
+                  { id: ticketId, price, logoSrc, logoName }, ticketIdx
+                ) in formattedTickets"
                 elevation="2"
                 class="pa-3 my-4 flex-grow-1"
               >
                 <section class="d-flex justify-space-between my-3">
                   <v-card-subtitle class="text-h6 text-info"
-                    >{{ ticket.price }} {{ currentCurrency }}
+                    >{{ price }} {{ currentCurrency }}
                   </v-card-subtitle>
                   <div>
                     <img
-                      :src="ticket.logoSrc"
-                      :alt="ticket.logoName"
+                      :src="logoSrc"
+                      :alt="logoName"
                       height="36"
                       width="110"
                       cover
                     />
                   </div>
                 </section>
-                <section class="d-flex flex-row justify-space-between px-4">
-                  <div>
-                    <span class="text-subtitle-2 text-grey"
-                      >{{ departurePoint }} – {{ arrivalPoint }}</span
-                    >
-                    <div></div>
-                  </div>
-                  <div>
-                    <span class="text-subtitle-2 text-grey">{{
-                      $t("flight.ticket.segment.travelTime").toUpperCase()
-                    }}</span>
-                    <div></div>
-                  </div>
-                  <div>
-                    <span class="text-subtitle-2 text-grey">{{
-                      $tc("flight.filter.transfer.amount").toUpperCase()
-                    }}</span>
-                    <div></div>
-                  </div>
-                </section>
+                <!-- Segments -->
+                <v-container>
+                  <v-row
+                    :key="`${ticketId}_${segmentId}`"
+                    v-for="{
+                      id: segmentId,
+                      beginEndDate,
+                      duration,
+                      stops,
+                      origin,
+                      destination,
+                    } in ticketSegments[ticketIdx]"
+                  >
+                    <v-col class="d-flex flex-column">
+                      <span class="text-subtitle-2 text-grey">
+                        {{ origin }} – {{ destination }}
+                      </span>
+                      <span class="font-weight-medium">{{ beginEndDate }}</span>
+                    </v-col>
+                    <v-col class="d-flex flex-column align-self-center">
+                      <span class="text-subtitle-2 text-grey">{{
+                        $t("flight.ticket.segment.travelTime").toUpperCase()
+                      }}</span>
+                      <span class="font-weight-medium">{{ duration }}</span>
+                    </v-col>
+                    <v-col class="d-flex flex-column">
+                      <span class="text-subtitle-2 text-grey">{{
+                        $tc(
+                          "flight.filter.transfer.amount",
+                          stops.length
+                        ).toUpperCase()
+                      }}</span>
+                      <span class="font-weight-medium">
+                        {{ stops.join(",") }}
+                      </span>
+                    </v-col>
+                  </v-row>
+                </v-container>
               </v-card>
-              <v-btn @click="showMoreTickets" class="w-100" color="info">{{
-                $t("flight.ticket.more", { n: ticketsStep })
-              }}</v-btn>
-            </v-main></template
-          >
+              <v-btn
+                :disabled="areAllTicketsVisible"
+                @click="showMoreTickets"
+                class="w-100"
+                color="info"
+                >{{
+                  $t("flight.ticket.more", {
+                    n: nextVisibleTicketsAmount,
+                  })
+                }}
+              </v-btn>
+            </v-main>
+          </template>
           <template v-else>
             <section class="d-flex justify-center my-4">
               <span class="text-h4 text--secondary">
@@ -128,7 +162,8 @@
 </template>
 
 <script>
-import { isEqual, sortBy, difference, camelCase } from "lodash";
+import moment from "moment";
+import { isEqual, sortBy, camelCase, omit, isEmpty, sum } from "lodash";
 import { loadContextData } from "@/api";
 import publicImg from "~/img";
 import img from "@/assets/img";
@@ -149,22 +184,30 @@ export default {
       isSuccess: true,
       message: "",
     },
+    snackbar: {
+      isVisible: false,
+      message: "",
+      timeout: 3000,
+      color: "error",
+    },
     // filters
     labels: [],
-    amounts: { 0: false, 1: false, 2: false, 3: false },
+    transferAmounts: { 0: true, 1: false, 2: false, 3: false },
     allCompaniesOption: null,
     allCompaniesId: "ALL",
     companies: new Map(),
     selectedCompanyIds: [],
     filterCompanyIds: new Set(),
     // sort
-    sortItemIdx: null,
+    sortItemIdx: 0,
     sortByList: ["cheapest", "fastest", "optimal"],
     // tickets
     tickets: [],
     ticketsStep: 5,
     beginTicketsIdx: 0,
     endTicketsIdx: 5,
+    // segments
+    segments: [],
     // flight
     currentCurrency: "UAH",
     departurePoint: "MOW",
@@ -172,18 +215,27 @@ export default {
   }),
 
   methods: {
+    toggleSnackbar({ message = "", isVisible = true, isSuccess = false }) {
+      this.snackbar = {
+        ...this.snackbar,
+        isVisible,
+        message,
+        color: isSuccess ? "success" : "error",
+      };
+    },
+
     async loadContext() {
       this.contextQuery.isLoading = true;
       try {
-        const { companies, tickets } = await loadContextData();
+        const { companies, tickets, segments } = await loadContextData();
         companies.set(this.allCompaniesId, this.allCompaniesOption);
+        this.segments = segments;
         this.companies = companies;
         this.tickets = tickets;
-        this.sortItemIdx = 0;
         this.selectedCompanyIds = [this.allCompaniesOption.id];
         this.contextQuery = { isLoading: false, isSuccess: true };
       } catch (err) {
-        console.error(err);
+        this.toggleSnackbar({ message: err });
         this.contextQuery = {
           isLoading: false,
           isSuccess: false,
@@ -195,11 +247,38 @@ export default {
     showMoreTickets() {
       this.endTicketsIdx += this.ticketsStep;
     },
+
+    sortByPrice() {
+      return sortBy(this.filteredTickets, ({ price }) => price);
+    },
+
+    sortByTime() {
+      return sortBy(this.filteredTickets, ({ segments }) => {
+        const durations = segments.map(
+          (segmentId) => this.filteredSegments.get(segmentId).duration
+        );
+        return sum(durations);
+      });
+    },
   },
 
   computed: {
+    nextVisibleTicketsAmount() {
+      const visibleTicketsAmount = this.filteredTickets.length;
+      const invisibleTicketsCount = visibleTicketsAmount - this.endTicketsIdx;
+      if (invisibleTicketsCount <= 0) return 0;
+      if (invisibleTicketsCount >= this.ticketsStep) {
+        return this.ticketsStep;
+      }
+      return invisibleTicketsCount;
+    },
+
+    areAllTicketsVisible() {
+      return this.formattedTickets.length === this.filteredTickets.length;
+    },
+
     formattedTickets() {
-      const visibleTickets = this.filteredTickets.slice(
+      const visibleTickets = this.sortedTickets.slice(
         this.beginTicketsIdx,
         this.endTicketsIdx
       );
@@ -215,63 +294,102 @@ export default {
       return visibleTicketsWithLogo;
     },
 
-    filteredTickets() {
-      if (this.filterCompanyIds.has(this.allCompaniesId)) {
-        // console.log("ALL");
-        return this.tickets;
-      }
-      // console.log("Specific", { fcIDS: this.filterCompanyIds });
-      return this.tickets.filter(({ companyId }) =>
-        this.filterCompanyIds.has(companyId)
+    filteredSegments() {
+      const { departurePoint, arrivalPoint } = this;
+      const segmentsFilteredByPointsAndTransfers = this.segments.filter(
+        ({ origin, destination, stops }) => {
+          const isSuitablePoints =
+            departurePoint === origin && arrivalPoint === destination;
+          const transferAmount = stops.length;
+          const isSuitableTransfersAmount =
+            this.transferAmounts[transferAmount];
+          return isSuitablePoints && isSuitableTransfersAmount;
+        }
       );
+      return segmentsFilteredByPointsAndTransfers.reduce(
+        (map, segment) => map.set(segment.id, segment),
+        new Map()
+      );
+    },
+
+    filteredTickets() {
+      const {
+        selectedCompanyIds: [filterId],
+        allCompaniesId,
+      } = this;
+      const shouldAllCompaniesBeSelected = isEqual(filterId, allCompaniesId);
+
+      const tickets = [];
+      // filter by arrival and departure points
+      this.tickets.forEach((ticket) => {
+        const suitableSegments = ticket.segments.filter((segmentId) =>
+          this.filteredSegments.has(segmentId)
+        );
+        if (!isEmpty(suitableSegments)) {
+          ticket.segments = suitableSegments;
+          tickets.push(ticket);
+        }
+      });
+
+      if (shouldAllCompaniesBeSelected) {
+        return tickets;
+      }
+
+      return tickets.filter(({ companyId }) => isEqual(filterId, companyId));
+    },
+
+    sortedTickets() {
+      const sortKey = this.sortByList[this.sortItemIdx];
+      const sortedBy = {
+        cheapest: this.sortByPrice(),
+        fastest: this.sortByTime(),
+        optimal: sortBy(this.filteredTickets, [
+          this.sortByPrice(),
+          this.sortByTime(),
+        ]),
+      };
+
+      return sortedBy[sortKey];
+    },
+
+    ticketSegments() {
+      const segments = this.filteredSegments;
+      return new Proxy(this.sortedTickets, {
+        get(tickets, ticketIdx) {
+          return tickets[ticketIdx].segments
+            .filter((segmentId) => segments.get(segmentId))
+            .map((segmentId) => {
+              const segment = segments.get(segmentId);
+              const { duration } = segment;
+              const datesKeys = ["dateStart", "dateEnd"];
+              const beginEndDate = datesKeys
+                .map((d) => moment(segment[d]).format("HH:mm"))
+                .join(" - ");
+              return omit(
+                {
+                  ...{
+                    ...segment,
+                    duration: moment.utc(duration).format("HH:mm"),
+                  },
+                  beginEndDate,
+                },
+                datesKeys
+              );
+            });
+        },
+      });
     },
   },
 
   watch: {
-    sortItemIdx(idx) {
-      const sortKey = this.sortByList[idx];
-      switch (sortKey) {
-        case "cheapest":
-          this.tickets = sortBy(this.tickets, (t) => t.price);
-          break;
-        default:
-          throw Error(`Unhandled sort option "${sortKey}"`);
-      }
-    },
-
-    selectedCompanyIds: {
-      handler(newIds, oldIds) {
-        if (isEqual(newIds, oldIds)) {
-          return;
+    contextQuery: {
+      handler({ isLoading, message, isSuccess }) {
+        if (!isLoading && message && !isSuccess) {
+          this.toggleSnackbar({ message, isSuccess });
         }
-        const companyIds = [...this.companies].map(([, { id }]) => id);
-        const selectedAllId = this.allCompaniesOption.id;
-        const selectedCompanyIds = newIds.filter((id) => id !== selectedAllId);
-        const restCompaniesId = companyIds.filter((id) => id !== selectedAllId);
-
-        const [newId] = difference(newIds, oldIds);
-        const [oldId] = difference(oldIds, newIds);
-
-        const areAllCompaniesSelected = isEqual(
-          sortBy(selectedCompanyIds),
-          sortBy(restCompaniesId)
-        );
-        const shouldAllCompaniesBeSelected =
-          (newId === selectedAllId && newIds.includes(selectedAllId)) ||
-          (areAllCompaniesSelected && oldId !== selectedAllId);
-
-        if (shouldAllCompaniesBeSelected) {
-          this.selectedCompanyIds = companyIds;
-        } else if (!areAllCompaniesSelected) {
-          this.selectedCompanyIds = newIds.filter(
-            (selectedId) => selectedId !== selectedAllId
-          );
-        } else {
-          this.selectedCompanyIds = [];
-        }
-        this.filterCompanyIds = new Set(this.selectedCompanyIds);
       },
       deep: true,
+      immediately: false,
     },
   },
 
@@ -283,6 +401,7 @@ export default {
     this.labels = [0, 1, 2, 3].map((count) =>
       this.$tc("flight.filter.transfer.amount", count)
     );
+    this.selectedCompanyIds = this.allCompaniesId;
 
     this.loadContext();
   },
