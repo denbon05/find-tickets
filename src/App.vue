@@ -1,5 +1,5 @@
 <template>
-  <v-app style="background-color: #e9eff5">
+  <v-app id="app">
     <v-snackbar
       :color="snackbar.color"
       v-model="snackbar.isVisible"
@@ -16,8 +16,8 @@
       <v-row justify="center">
         <!-- Filters -->
         <v-col cols="12" md="4" lg="3" xl="2">
-          <aside class="d-flex flex-row flex-md-column" style="gap: 20px">
-            <v-card elevation="2" class="pa-3 flex-grow-1"
+          <aside class="d-flex flex-row flex-md-column" id="aside">
+            <v-card depressed class="pa-3 flex-grow-1"
               ><v-card-title class="text-subtitle-1">{{
                 $t("flight.filter.transfer.title").toUpperCase()
               }}</v-card-title>
@@ -79,7 +79,7 @@
                 v-for="(
                   { id: ticketId, price, logoSrc, logoName }, ticketIdx
                 ) in formattedTickets"
-                elevation="2"
+                depressed
                 class="pa-3 my-4 flex-grow-1"
               >
                 <section class="d-flex justify-space-between my-3">
@@ -407,3 +407,13 @@ export default {
   },
 };
 </script>
+
+<style scoped>
+#app {
+  background-color: #e9eff5;
+}
+
+#aside {
+  gap: 20px;
+}
+</style>
